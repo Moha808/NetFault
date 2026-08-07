@@ -70,7 +70,12 @@ export default function Login() {
             </div>
           </div>
           {error && <p className="error-text">{error}</p>}
-          <button className="btn btn-primary" type="submit" disabled={isSubmitting} style={{ width: '100%', marginTop: '12px' }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', margin: '4px 0 12px' }}>
+            <Link to="/forgot-password" className="helper-text" style={{ fontSize: '0.85rem' }}>
+              Forgot password?
+            </Link>
+          </div>
+          <button className="btn btn-primary" type="submit" disabled={isSubmitting} style={{ width: '100%' }}>
             {isSubmitting ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
