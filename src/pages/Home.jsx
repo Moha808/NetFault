@@ -2,9 +2,14 @@ import { Link, Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 export default function Home() {
-  const { session, role, loading } = useAuth();
+  const { session, role, loading, isLoggingOut } = useAuth();
+
+  // Do not redirect to dashboard if a logout action is occurring
+  if (isLoggingOut) return null;
 
   if (loading) return <div className="page-loading">Loading…</div>;
+
+  // Authenticated users landing on "/" are forwarded to their respective dashboard
   if (session) return <Navigate to={role === 'admin' ? '/admin' : '/dashboard'} replace />;
 
   return (

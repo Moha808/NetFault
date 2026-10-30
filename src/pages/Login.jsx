@@ -11,7 +11,9 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
   
-  const { session, role, loading: authLoading } = useAuth();
+  const { session, role, loading: authLoading, isLoggingOut } = useAuth();
+
+  if (isLoggingOut) return null;
 
   if (authLoading) {
     return (
@@ -39,12 +41,19 @@ export default function Login() {
       setError(signInError.message);
       return;
     }
-    // Fetch role to determine redirect destination
+    // Fetch role to determine redirect destination and prime cache
     const { data: profile } = await supabase
       .from('profiles')
-      .select('role')
+      .select('*')
       .eq('id', data.user.id)
       .single();
+
+    if (profile) {
+      try {
+        localStorage.setItem('netfault_profile', JSON.stringify(profile));
+      } catch {}
+    }
+
     navigate(profile?.role === 'admin' ? '/admin' : '/dashboard');
   }
 

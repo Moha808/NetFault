@@ -14,8 +14,9 @@ export default function Register() {
   const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
 
-  const { session, role, loading: authLoading } = useAuth();
+  const { session, role, loading: authLoading, isLoggingOut } = useAuth();
 
+  if (isLoggingOut) return null;
   if (authLoading) return <div className="page-loading">Loading…</div>;
   if (session) return <Navigate to={role === 'admin' ? '/admin' : '/dashboard'} replace />;
 

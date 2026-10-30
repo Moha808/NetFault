@@ -46,7 +46,6 @@ export default function Navbar() {
     setIsLogoutModalOpen(false);
     setIsMobileMenuOpen(false);
     await signOut();
-    navigate('/');
   }
 
   const homeLink = role === 'admin' ? '/admin' : role === 'user' ? '/dashboard' : '/';

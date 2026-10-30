@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
@@ -6,36 +6,107 @@ import { StatusBadge, PriorityBadge } from '../../components/Badge';
 
 export default function UserDashboard() {
   const { user, profile } = useAuth();
-  const [reports, setReports] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const userId = user?.id;
+
+  // Initialize reports immediately from cache if available (0ms instant display)
+  const [reports, setReports] = useState(() => {
+    if (!userId) return [];
+    try {
+      const cached = sessionStorage.getItem(`netfault_user_reports_${userId}`);
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [loading, setLoading] = useState(() => {
+    if (!userId) return true;
+    try {
+      const cached = sessionStorage.getItem(`netfault_user_reports_${userId}`);
+      return !cached;
+    } catch {
+      return true;
+    }
+  });
+
+  const [isRevalidating, setIsRevalidating] = useState(false);
   const [error, setError] = useState(null);
+  const abortControllerRef = useRef(null);
 
-  useEffect(() => {
-    if (!user) return;
-    let cancelled = false;
+  const fetchReports = useCallback(async () => {
+    if (!userId) return;
 
-    async function fetchReports() {
-      setLoading(true);
-      setError(null);
+    // Abort any prior in-flight request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    // 10s timeout to prevent requests from hanging on mobile connections
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+    setIsRevalidating(true);
+    setError(null);
+
+    try {
       const { data, error: fetchError } = await supabase
         .from('fault_reports')
         .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .abortSignal(controller.signal);
 
-      if (cancelled) return;
+      clearTimeout(timeoutId);
+
       if (fetchError) {
-        setError(fetchError.message);
-        setLoading(false);
-        return;
+        throw fetchError;
       }
-      setReports(data || []);
+
+      const freshReports = data || [];
+      setReports(freshReports);
+      try {
+        sessionStorage.setItem(`netfault_user_reports_${userId}`, JSON.stringify(freshReports));
+      } catch {}
+    } catch (err) {
+      if (err.name === 'AbortError') {
+        console.warn('Reports request timed out on mobile network.');
+        if (reports.length === 0) {
+          setError('Network request timed out. Please check your connection and tap Retry.');
+        }
+      } else {
+        console.error('Failed to fetch reports:', err);
+        if (reports.length === 0) {
+          setError(err.message || 'Unable to load your reports.');
+        }
+      }
+    } finally {
+      clearTimeout(timeoutId);
       setLoading(false);
+      setIsRevalidating(false);
     }
+  }, [userId, reports.length]);
+
+  useEffect(() => {
+    if (!userId) return;
+
+    // If cache wasn't ready on initial render, load it now
+    try {
+      const cached = sessionStorage.getItem(`netfault_user_reports_${userId}`);
+      if (cached && reports.length === 0) {
+        setReports(JSON.parse(cached));
+        setLoading(false);
+      }
+    } catch {}
 
     fetchReports();
-    return () => { cancelled = true; };
-  }, [user]);
+
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, [userId, fetchReports]);
 
   const counts = {
     total: reports.length,
@@ -44,7 +115,12 @@ export default function UserDashboard() {
     resolved: reports.filter((r) => r.status === 'Resolved').length
   };
 
-  if (loading) {
+  const displayName = profile?.full_name?.split(' ')[0] 
+    || user?.user_metadata?.full_name?.split(' ')[0] 
+    || '';
+
+  // Render skeleton placeholder only when we have zero cached data to show
+  if (loading && reports.length === 0) {
     return (
       <div className="page">
         <div className="page-header">
@@ -73,12 +149,13 @@ export default function UserDashboard() {
     );
   }
 
-  if (error) {
+  // Graceful error state with a functioning retry mechanism
+  if (error && reports.length === 0) {
     return (
       <div className="page">
         <div className="error-state">
           <p className="error-text">{error}</p>
-          <button className="btn btn-primary" onClick={() => window.location.reload()}>
+          <button className="btn btn-primary" onClick={fetchReports}>
             Retry
           </button>
         </div>
@@ -90,8 +167,11 @@ export default function UserDashboard() {
     <div className="page">
       <div className="page-header">
         <div>
-          <h1>Welcome back{profile ? `, ${profile.full_name.split(' ')[0]}` : ''}</h1>
-          <p>Here's a snapshot of your reported faults.</p>
+          <h1>Welcome back{displayName ? `, ${displayName}` : ''}</h1>
+          <p>
+            Here's a snapshot of your reported faults.
+            {isRevalidating && <span style={{ marginLeft: 8, fontSize: '0.85rem', color: 'var(--text-muted)' }}>Refreshing…</span>}
+          </p>
         </div>
         <Link to="/report" className="btn btn-primary">Report a fault</Link>
       </div>
