@@ -13,19 +13,33 @@ export default function Login() {
   
   const { session, role, loading: authLoading } = useAuth();
 
-  if (authLoading) return <div className="page-loading">Loading…</div>;
+  if (authLoading) {
+    return (
+      <div className="page-loading">
+        <div className="loading-skeleton-container">
+          <div className="skeleton skeleton-header" style={{ maxWidth: 300, margin: '0 auto 24px' }} />
+          <div style={{ maxWidth: 440, margin: '0 auto' }}>
+            <div className="skeleton" style={{ height: 40, marginBottom: 16 }} />
+            <div className="skeleton" style={{ height: 40, marginBottom: 16 }} />
+            <div className="skeleton" style={{ height: 44, borderRadius: 8 }} />
+          </div>
+        </div>
+      </div>
+    );
+  }
   if (session) return <Navigate to={role === 'admin' ? '/admin' : '/dashboard'} replace />;
 
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
     setIsSubmitting(true);
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
     setIsSubmitting(false);
-    if (error) {
-      setError(error.message);
+    if (signInError) {
+      setError(signInError.message);
       return;
     }
+    // Fetch role to determine redirect destination
     const { data: profile } = await supabase
       .from('profiles')
       .select('role')
